@@ -965,15 +965,22 @@ async function refreshData() {
 }
 
 async function mutate(fn) {
+  // Optimistic: apply locally and render immediately
+  fn();
+  render();
+
+  // Then persist to Drive in the background
   mutationQueue = mutationQueue.then(async () => {
     showLoading();
     try {
-      data = await readFromDrive();
-      fn();
       await writeToDrive(data);
-      render();
     } catch (err) {
-      console.error('Mutation failed:', err);
+      console.error('Sync failed:', err);
+      // Write failed — re-read authoritative state from Drive
+      try {
+        data = await readFromDrive();
+        render();
+      } catch (e) { /* offline — local state persists until next refresh */ }
     } finally {
       hideLoading();
     }
