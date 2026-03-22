@@ -1,4 +1,4 @@
-const CACHE_NAME = 'todo-shell-v2';
+const CACHE_NAME = 'todo-shell-v3';
 const SHELL_ASSETS = [
   './todo-prototype.html',
   './manifest.json',
@@ -29,8 +29,15 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Cache-first for app shell
+  // Network-first for app shell — try network, fall back to cache if offline
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
+    fetch(event.request)
+      .then(response => {
+        // Update cache with fresh version
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
