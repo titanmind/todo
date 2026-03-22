@@ -1,0 +1,1938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#141417">
+<title>Todo</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<script>
+  // Apply saved theme immediately to avoid flash
+  if (localStorage.getItem('todo_theme') === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+  :root {
+    --bg-deep: #101013;
+    --bg-base: #18181c;
+    --bg-surface: #222228;
+    --bg-elevated: #2a2a32;
+    --bg-hover: #32323c;
+    --border: #333340;
+    --border-subtle: #28282f;
+    --text-primary: #e8e6e1;
+    --text-secondary: #9a9890;
+    --text-muted: #5c5a55;
+    --accent: #d4a054;
+    --accent-dim: #a07838;
+    --accent-glow: rgba(212,160,84,0.15);
+    --done-text: #5c5a55;
+    --done-bg: rgba(0,0,0,0.15);
+    --danger: #c45c5c;
+    --danger-dim: rgba(196,92,92,0.15);
+    --success: #5ca06a;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --font-body: 'DM Sans', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --topbar-h: 108px;
+    --fab-size: 56px;
+    --transition-fast: 150ms cubic-bezier(0.23,1,0.32,1);
+    --transition-med: 250ms cubic-bezier(0.23,1,0.32,1);
+    --transition-spring: 350ms cubic-bezier(0.34,1.56,0.64,1);
+  }
+
+  [data-theme="light"] {
+    --bg-deep: #f0eeeb;
+    --bg-base: #f8f7f5;
+    --bg-surface: #edecea;
+    --bg-elevated: #ffffff;
+    --bg-hover: #e5e4e1;
+    --border: #d5d3cf;
+    --border-subtle: #e0deda;
+    --text-primary: #1c1b18;
+    --text-secondary: #6b6860;
+    --text-muted: #a5a29a;
+    --accent: #b07e30;
+    --accent-dim: #8a6225;
+    --accent-glow: rgba(176,126,48,0.12);
+    --done-text: #a5a29a;
+    --done-bg: rgba(0,0,0,0.04);
+    --danger: #c45c5c;
+    --danger-dim: rgba(196,92,92,0.1);
+    --success: #4a8a58;
+  }
+
+  html,body {
+    height:100%;
+    background:var(--bg-deep);
+    color:var(--text-primary);
+    font-family:var(--font-body);
+    font-size:16px;
+    line-height:1.5;
+    overflow:hidden;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none;
+    user-select:none;
+    transition:background 300ms ease,color 300ms ease;
+  }
+
+  #app {
+    display:flex;flex-direction:column;height:100%;
+    max-width:600px;margin:0 auto;position:relative;
+    background:var(--bg-base);
+    box-shadow: 0 0 80px rgba(0,0,0,0.5);
+    transition:background 300ms ease;
+  }
+
+  /* ── Auth Screen ── */
+  #authScreen {
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    height:100%;max-width:600px;margin:0 auto;
+    background:var(--bg-base);gap:20px;padding:32px;text-align:center;
+    box-shadow: 0 0 80px rgba(0,0,0,0.5);
+  }
+  .auth-logo {
+    width:80px;height:80px;border-radius:20px;
+    background:var(--accent);color:var(--bg-deep);
+    display:flex;align-items:center;justify-content:center;
+    font-size:40px;line-height:1;
+  }
+  .auth-logo svg { width:44px;height:44px; }
+  .auth-title { font-size:28px;font-weight:700;color:var(--text-primary); }
+  .auth-subtitle { font-size:15px;color:var(--text-secondary);max-width:300px;line-height:1.5; }
+  .auth-btn {
+    height:48px;padding:0 32px;
+    background:var(--accent);color:var(--bg-deep);
+    border:none;border-radius:var(--radius-sm);
+    font-family:var(--font-body);font-size:15px;font-weight:600;
+    cursor:pointer;transition:all var(--transition-fast);
+  }
+  .auth-btn:hover { filter:brightness(1.1); }
+  .auth-btn:active { transform:scale(0.97); }
+
+  /* ── Loading Bar ── */
+  .loading-bar {
+    position:fixed;top:0;left:0;width:100%;height:3px;
+    z-index:9999;overflow:hidden;opacity:0;
+    transition:opacity 200ms;pointer-events:none;
+  }
+  .loading-bar.active { opacity:1; }
+  .loading-bar::after {
+    content:'';position:absolute;top:0;left:-40%;width:40%;height:100%;
+    background:var(--accent);border-radius:2px;
+    animation:loadSlide 1s ease-in-out infinite;
+  }
+  @keyframes loadSlide { 0%{left:-40%} 100%{left:100%} }
+
+  /* ── Top Bar ── */
+  .topbar {
+    flex-shrink:0;
+    background:var(--bg-base);
+    border-bottom:1px solid var(--border-subtle);
+    padding:12px 16px 10px;
+    z-index:100;
+    position:relative;
+    transition:background 300ms ease,border-color 300ms ease;
+  }
+  .topbar-row { display:flex;align-items:center;gap:8px;margin-bottom:8px; }
+  .topbar-row:last-child { margin-bottom:0; }
+
+  /* Breadcrumbs */
+  .breadcrumbs {
+    display:flex;align-items:center;gap:2px;
+    flex:1;min-width:0;overflow-x:auto;
+    scrollbar-width:none;
+    font-size:14px;font-weight:500;
+  }
+  .breadcrumbs::-webkit-scrollbar{display:none}
+  .crumb {
+    white-space:nowrap;
+    color:var(--text-muted);
+    cursor:pointer;
+    padding:4px 6px;
+    border-radius:var(--radius-sm);
+    transition:color var(--transition-fast),background var(--transition-fast);
+  }
+  .crumb:hover { color:var(--text-secondary);background:var(--bg-surface); }
+  .crumb.active { color:var(--accent);cursor:default; }
+  .crumb.active:hover { background:transparent; }
+  .crumb-sep { color:var(--text-muted);opacity:0.4;font-size:12px;padding:0 2px; }
+
+  /* Icon Buttons */
+  .icon-btn {
+    width:36px;height:36px;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:var(--radius-sm);border:none;
+    background:transparent;color:var(--text-secondary);
+    cursor:pointer;transition:all var(--transition-fast);
+    flex-shrink:0;
+  }
+  .icon-btn:hover { background:var(--bg-surface);color:var(--text-primary); }
+  .icon-btn:active { transform:scale(0.92); }
+  .icon-btn svg { width:20px;height:20px; }
+
+  /* Search */
+  .search-wrap {
+    flex:1;position:relative;
+  }
+  .search-input {
+    width:100%;height:36px;
+    background:var(--bg-surface);
+    border:1px solid var(--border-subtle);
+    border-radius:var(--radius-sm);
+    padding:0 12px 0 36px;
+    color:var(--text-primary);
+    font-family:var(--font-body);font-size:14px;
+    outline:none;
+    transition:border-color var(--transition-fast),box-shadow var(--transition-fast);
+  }
+  .search-input::placeholder { color:var(--text-muted); }
+  .search-input:focus {
+    border-color:var(--accent-dim);
+    box-shadow:0 0 0 3px var(--accent-glow);
+  }
+  .search-icon {
+    position:absolute;left:10px;top:50%;transform:translateY(-50%);
+    color:var(--text-muted);pointer-events:none;
+  }
+  .search-icon svg { width:16px;height:16px; }
+
+  /* ── List ── */
+  .list-container {
+    flex:1;overflow-y:auto;overflow-x:hidden;
+    padding:8px 0;
+    -webkit-overflow-scrolling:touch;
+    scroll-behavior:smooth;
+  }
+  .list-container::-webkit-scrollbar { width:4px; }
+  .list-container::-webkit-scrollbar-track { background:transparent; }
+  .list-container::-webkit-scrollbar-thumb { background:var(--border);border-radius:2px; }
+
+  .list-empty {
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:80px 32px;color:var(--text-muted);text-align:center;
+    font-size:15px;gap:12px;
+  }
+  .list-empty svg { width:48px;height:48px;opacity:0.3; }
+
+  /* Item Row */
+  .item-row {
+    display:flex;align-items:center;
+    padding:14px 16px;
+    margin:0 8px;
+    border-radius:var(--radius-md);
+    cursor:pointer;
+    transition: transform var(--transition-med), opacity var(--transition-med),
+                background var(--transition-fast), margin var(--transition-med);
+    position:relative;
+    touch-action:none;
+  }
+  .item-row:hover { background:var(--bg-surface); }
+  .item-row:active:not(.dragging) { background:var(--bg-elevated); }
+
+  .item-row.done {
+    opacity:0.5;
+  }
+  .item-row.done .item-name { text-decoration:line-through;text-decoration-color:var(--text-muted); }
+  .item-row.done .item-desc { text-decoration:line-through;text-decoration-color:var(--text-muted); }
+
+  .item-row.dragging {
+    z-index:200;
+    background:var(--bg-elevated);
+    box-shadow:0 12px 40px rgba(0,0,0,0.5),0 0 0 1px var(--border);
+    transform:scale(1.03);
+    opacity:0.95;
+    pointer-events:none;
+    position:fixed;
+    left:0;right:0;max-width:584px;margin:0 auto;
+  }
+
+  .item-row.drop-target {
+    background:var(--accent-glow);
+    outline:2px dashed var(--accent-dim);
+    outline-offset:-2px;
+  }
+
+  .item-indicator {
+    width:22px;height:22px;
+    border-radius:6px;
+    border:2px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;margin-right:12px;
+    transition:all var(--transition-fast);
+  }
+  .item-row.done .item-indicator {
+    background:var(--accent-dim);border-color:var(--accent-dim);
+  }
+  .item-row.done .item-indicator svg { opacity:1; }
+  .item-indicator svg { width:14px;height:14px;opacity:0;color:var(--bg-base); }
+
+  .category-indicator {
+    width:22px;height:22px;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;margin-right:12px;
+    color:var(--accent);
+    transition:color var(--transition-fast);
+  }
+  .item-row.done .category-indicator { color:var(--text-muted); }
+  .category-indicator svg { width:18px;height:18px; }
+
+  .item-content { flex:1;min-width:0; }
+  .item-text {
+    display:flex;align-items:baseline;gap:0;
+    font-size:15px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .item-name { font-weight:500;color:var(--text-primary);transition:color var(--transition-fast); }
+  .item-row.done .item-name { color:var(--done-text); }
+  .item-desc-sep { color:var(--text-muted);margin:0 6px;font-weight:300; }
+  .item-desc {
+    color:var(--text-secondary);font-weight:400;
+    overflow:hidden;text-overflow:ellipsis;
+    transition:color var(--transition-fast);
+  }
+  .item-row.done .item-desc { color:var(--done-text); }
+
+  .item-chevron {
+    color:var(--text-muted);flex-shrink:0;margin-left:8px;
+    transition:color var(--transition-fast);
+  }
+  .item-chevron svg { width:16px;height:16px; }
+
+  /* Drag placeholder */
+  .drag-placeholder {
+    transition:height var(--transition-med);
+    margin:0 8px;
+    border-radius:var(--radius-md);
+  }
+
+  /* ── FAB ── */
+  .fab {
+    position:absolute;bottom:24px;right:20px;
+    width:var(--fab-size);height:var(--fab-size);
+    border-radius:16px;border:none;
+    background:var(--accent);color:var(--bg-deep);
+    font-size:28px;font-weight:300;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    box-shadow:0 6px 24px rgba(212,160,84,0.3),0 2px 8px rgba(0,0,0,0.3);
+    transition:all var(--transition-fast);
+    z-index:50;
+  }
+  .fab:hover { transform:scale(1.08);box-shadow:0 8px 32px rgba(212,160,84,0.4); }
+  .fab:active { transform:scale(0.95); }
+  .fab svg { width:28px;height:28px; }
+
+  /* ── Overlay Backdrop ── */
+  .overlay-backdrop {
+    position:fixed;inset:0;
+    background:rgba(0,0,0,0.6);
+    z-index:300;
+    opacity:0;
+    transition:opacity var(--transition-fast);
+    pointer-events:none;
+  }
+  .overlay-backdrop.active { opacity:1;pointer-events:all; }
+
+  /* ── Context Menu ── */
+  .context-menu {
+    position:fixed;
+    left:50%;transform:translateX(-50%) translateY(12px) scale(0.95);
+    bottom:24px;
+    width:calc(100% - 32px);max-width:560px;
+    background:var(--bg-elevated);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    padding:0;
+    z-index:310;
+    opacity:0;
+    transition:all var(--transition-spring);
+    pointer-events:none;
+    overflow:hidden;
+  }
+  .context-menu.active {
+    opacity:1;transform:translateX(-50%) translateY(0) scale(1);pointer-events:all;
+  }
+  .ctx-header {
+    padding:16px 20px 12px;
+    border-bottom:1px solid var(--border-subtle);
+  }
+  .ctx-name { font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:2px; }
+  .ctx-desc { font-size:13px;color:var(--text-secondary);line-height:1.4; }
+  .ctx-actions { padding:6px 0; }
+  .ctx-action {
+    display:flex;align-items:center;gap:12px;
+    width:100%;padding:12px 20px;
+    background:none;border:none;
+    color:var(--text-primary);font-family:var(--font-body);font-size:15px;
+    cursor:pointer;transition:background var(--transition-fast);
+    text-align:left;
+  }
+  .ctx-action:hover { background:var(--bg-hover); }
+  .ctx-action:active { background:var(--bg-surface); }
+  .ctx-action svg { width:18px;height:18px;color:var(--text-secondary);flex-shrink:0; }
+  .ctx-action.danger { color:var(--danger); }
+  .ctx-action.danger svg { color:var(--danger); }
+
+  /* ── Create / Edit Modal ── */
+  .modal {
+    position:fixed;
+    left:50%;transform:translateX(-50%) translateY(20px) scale(0.95);
+    bottom:24px;
+    width:calc(100% - 32px);max-width:560px;
+    background:var(--bg-elevated);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    padding:20px;
+    z-index:310;
+    opacity:0;
+    transition:all var(--transition-spring);
+    pointer-events:none;
+  }
+  .modal.active {
+    opacity:1;transform:translateX(-50%) translateY(0) scale(1);pointer-events:all;
+  }
+  .modal-title { font-size:16px;font-weight:600;margin-bottom:16px; }
+
+  .field-group { margin-bottom:14px; }
+  .field-label {
+    display:block;font-size:12px;font-weight:600;
+    color:var(--text-secondary);text-transform:uppercase;
+    letter-spacing:0.05em;margin-bottom:6px;
+  }
+  .field-input {
+    width:100%;height:40px;
+    background:var(--bg-surface);border:1px solid var(--border-subtle);
+    border-radius:var(--radius-sm);padding:0 12px;
+    color:var(--text-primary);font-family:var(--font-body);font-size:15px;
+    outline:none;transition:border-color var(--transition-fast),box-shadow var(--transition-fast);
+  }
+  .field-input:focus {
+    border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow);
+  }
+  .field-textarea {
+    width:100%;min-height:60px;resize:vertical;
+    background:var(--bg-surface);border:1px solid var(--border-subtle);
+    border-radius:var(--radius-sm);padding:10px 12px;
+    color:var(--text-primary);font-family:var(--font-body);font-size:15px;
+    outline:none;transition:border-color var(--transition-fast),box-shadow var(--transition-fast);
+    line-height:1.4;
+  }
+  .field-textarea:focus {
+    border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-glow);
+  }
+
+  .type-toggle {
+    display:flex;gap:8px;
+  }
+  .type-btn {
+    flex:1;height:40px;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    background:var(--bg-surface);border:2px solid var(--border-subtle);
+    border-radius:var(--radius-sm);
+    color:var(--text-secondary);font-family:var(--font-body);font-size:14px;font-weight:500;
+    cursor:pointer;transition:all var(--transition-fast);
+  }
+  .type-btn:hover { border-color:var(--border); }
+  .type-btn.active {
+    border-color:var(--accent);color:var(--accent);background:var(--accent-glow);
+  }
+  .type-btn svg { width:16px;height:16px; }
+
+  .submit-btn {
+    width:100%;height:44px;
+    background:var(--accent);color:var(--bg-deep);
+    border:none;border-radius:var(--radius-sm);
+    font-family:var(--font-body);font-size:15px;font-weight:600;
+    cursor:pointer;transition:all var(--transition-fast);
+    margin-top:4px;
+  }
+  .submit-btn:hover { filter:brightness(1.1); }
+  .submit-btn:active { transform:scale(0.98); }
+  .submit-btn:disabled { opacity:0.4;cursor:not-allowed; }
+
+  /* ── Confirm Dialog ── */
+  .confirm-dialog {
+    position:fixed;
+    left:50%;top:50%;transform:translate(-50%,-50%) scale(0.9);
+    width:calc(100% - 48px);max-width:360px;
+    background:var(--bg-elevated);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    padding:24px;
+    z-index:400;
+    opacity:0;transition:all var(--transition-spring);pointer-events:none;
+    text-align:center;
+  }
+  .confirm-dialog.active {
+    opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:all;
+  }
+  .confirm-text { font-size:15px;color:var(--text-primary);margin-bottom:20px;line-height:1.4; }
+  .confirm-actions { display:flex;gap:10px; }
+  .confirm-btn {
+    flex:1;height:40px;border:none;border-radius:var(--radius-sm);
+    font-family:var(--font-body);font-size:14px;font-weight:500;
+    cursor:pointer;transition:all var(--transition-fast);
+  }
+  .confirm-btn.cancel { background:var(--bg-surface);color:var(--text-secondary); }
+  .confirm-btn.cancel:hover { background:var(--bg-hover); }
+  .confirm-btn.confirm { background:var(--danger);color:white; }
+  .confirm-btn.confirm:hover { filter:brightness(1.1); }
+  .confirm-btn.primary { background:var(--accent);color:var(--bg-deep); }
+  .confirm-btn.primary:hover { filter:brightness(1.1); }
+
+  /* ── Search Results ── */
+  .search-result-path {
+    font-size:11px;color:var(--text-muted);font-family:var(--font-mono);
+    margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+
+  /* ── Archive View ── */
+  .archive-header {
+    display:flex;align-items:center;gap:12px;
+    padding:14px 16px;margin:0 8px;
+  }
+  .archive-title { font-size:18px;font-weight:600;color:var(--text-primary); }
+  .archive-back {
+    width:32px;height:32px;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:var(--radius-sm);border:none;
+    background:var(--bg-surface);color:var(--text-secondary);
+    cursor:pointer;transition:all var(--transition-fast);
+  }
+  .archive-back:hover { background:var(--bg-hover);color:var(--text-primary); }
+
+  /* ── Animation helpers ── */
+  .item-enter {
+    animation:itemEnter var(--transition-spring) forwards;
+  }
+  @keyframes itemEnter {
+    from { opacity:0;transform:translateY(-8px) scale(0.97); }
+    to { opacity:1;transform:translateY(0) scale(1); }
+  }
+
+  .slide-left-enter { animation:slideLeftIn 250ms cubic-bezier(0.23,1,0.32,1) forwards; }
+  .slide-right-enter { animation:slideRightIn 250ms cubic-bezier(0.23,1,0.32,1) forwards; }
+  @keyframes slideLeftIn { from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)} }
+  @keyframes slideRightIn { from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)} }
+
+  /* ── Scrollbar hover ── */
+  .list-container:hover::-webkit-scrollbar-thumb { background:var(--text-muted); }
+</style>
+</head>
+<body>
+
+<!-- Loading Bar -->
+<div class="loading-bar" id="loadingBar"></div>
+
+<!-- Auth Screen -->
+<div id="authScreen">
+  <div class="auth-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
+  <div class="auth-title">Todo</div>
+  <div class="auth-subtitle" id="authStatus">Connecting...</div>
+  <button class="auth-btn" id="authBtn" style="display:none">Sign in with Google</button>
+</div>
+
+<!-- App (hidden until authenticated) -->
+<div id="app" style="display:none">
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="topbar-row">
+      <div class="breadcrumbs" id="breadcrumbs"></div>
+      <button class="icon-btn" id="settingsBtn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      </button>
+      <button class="icon-btn" id="archiveBtn" title="Archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5" rx="1"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+      </button>
+      <button class="icon-btn" id="refreshBtn" title="Refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      </button>
+    </div>
+    <div class="topbar-row">
+      <div class="search-wrap">
+        <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search items...">
+      </div>
+    </div>
+  </div>
+
+  <!-- Main List -->
+  <div class="list-container" id="listContainer"></div>
+
+  <!-- FAB -->
+  <button class="fab" id="fabBtn" title="Add new">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+</div>
+
+<!-- Overlay Backdrop -->
+<div class="overlay-backdrop" id="backdrop"></div>
+
+<!-- Context Menu -->
+<div class="context-menu" id="contextMenu">
+  <div class="ctx-header">
+    <div class="ctx-name" id="ctxName"></div>
+    <div class="ctx-desc" id="ctxDesc"></div>
+  </div>
+  <div class="ctx-actions" id="ctxActions"></div>
+</div>
+
+<!-- Create/Edit Modal -->
+<div class="modal" id="modal">
+  <div class="modal-title" id="modalTitle">Add New</div>
+  <div class="field-group">
+    <label class="field-label">Type</label>
+    <div class="type-toggle" id="typeToggle">
+      <button class="type-btn active" data-type="item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/></svg>
+        Item
+      </button>
+      <button class="type-btn" data-type="category">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+        Category
+      </button>
+    </div>
+  </div>
+  <div class="field-group">
+    <label class="field-label">Name</label>
+    <input type="text" class="field-input" id="modalName" placeholder="What needs doing?">
+  </div>
+  <div class="field-group">
+    <label class="field-label">Description <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <textarea class="field-textarea" id="modalDesc" placeholder="Add details..." rows="2"></textarea>
+  </div>
+  <button class="submit-btn" id="modalSubmit">Add</button>
+</div>
+
+<!-- Confirm Dialog -->
+<div class="confirm-dialog" id="confirmDialog">
+  <div class="confirm-text" id="confirmText"></div>
+  <div class="confirm-actions" id="confirmActions"></div>
+</div>
+
+<!-- Settings Panel -->
+<div class="context-menu settings-panel" id="settingsPanel">
+  <div class="ctx-header">
+    <div class="ctx-name">Settings</div>
+  </div>
+  <div class="ctx-actions">
+    <button class="ctx-action" id="settingTheme">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <span id="themeLabel">Switch to light mode</span>
+    </button>
+    <button class="ctx-action" id="settingArchiveAll">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5" rx="1"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+      Archive all completed
+    </button>
+    <button class="ctx-action" id="settingExport">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export JSON
+    </button>
+    <button class="ctx-action" id="settingImport">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Import JSON
+    </button>
+  </div>
+</div>
+<input type="file" id="importFileInput" accept=".json" style="display:none">
+
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script>
+// ═══════════════════════════════════════════════
+//  Configuration
+// ═══════════════════════════════════════════════
+const CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_FILE_NAME = 'todo-data.json';
+
+// ═══════════════════════════════════════════════
+//  Icons (reusable SVG strings)
+// ═══════════════════════════════════════════════
+const ICONS = {
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>',
+  chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>',
+  archive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5" rx="1"/><line x1="10" y1="12" x2="14" y2="12"/></svg>',
+  moveUp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 12 6 7 11"/><line x1="12" y1="6" x2="12" y2="18"/></svg>',
+  restore: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>',
+};
+
+// ═══════════════════════════════════════════════
+//  Auth State
+// ═══════════════════════════════════════════════
+let tokenClient = null;
+let accessToken = null;
+let tokenExpiry = 0;
+let fileId = null;
+let tokenResolve = null;
+let tokenReject = null;
+let tokenPromise = null;
+
+// ═══════════════════════════════════════════════
+//  App Data
+// ═══════════════════════════════════════════════
+let data = { version: 1, lastModified: new Date().toISOString(), items: [], archive: [] };
+
+// ═══════════════════════════════════════════════
+//  UI State
+// ═══════════════════════════════════════════════
+let navStack = [];
+let searchQuery = '';
+let archiveView = false;
+let contextItem = null;
+let editingItem = null;
+let modalDirty = false;
+let modalMode = 'create';
+let selectedType = 'item';
+let activeOverlay = null;
+
+// ═══════════════════════════════════════════════
+//  Drag State
+// ═══════════════════════════════════════════════
+let dragState = null;
+let longPressTimer = null;
+let longPressTriggered = false;
+let pressStartPos = null;
+
+// ═══════════════════════════════════════════════
+//  Loading State
+// ═══════════════════════════════════════════════
+let activeRequests = 0;
+let mutationQueue = Promise.resolve();
+
+// ═══════════════════════════════════════════════
+//  Utility
+// ═══════════════════════════════════════════════
+const uuid = () => crypto.randomUUID();
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function showLoading() {
+  activeRequests++;
+  document.getElementById('loadingBar').classList.add('active');
+}
+
+function hideLoading() {
+  activeRequests = Math.max(0, activeRequests - 1);
+  if (activeRequests === 0) {
+    document.getElementById('loadingBar').classList.remove('active');
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  Auth
+// ═══════════════════════════════════════════════
+function initAuth() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) {
+        if (tokenReject) {
+          const rej = tokenReject;
+          tokenResolve = null; tokenReject = null; tokenPromise = null;
+          rej(new Error(resp.error));
+        } else {
+          showLogin();
+        }
+        return;
+      }
+      accessToken = resp.access_token;
+      tokenExpiry = Date.now() + ((resp.expires_in || 3600) * 1000);
+      localStorage.setItem('todo_gis_token', JSON.stringify({ token: accessToken, expiry: tokenExpiry }));
+      if (tokenResolve) {
+        const res = tokenResolve;
+        tokenResolve = null; tokenReject = null; tokenPromise = null;
+        res();
+      } else {
+        onAuthSuccess();
+      }
+    },
+    error_callback: (err) => {
+      if (tokenReject) {
+        const rej = tokenReject;
+        tokenResolve = null; tokenReject = null; tokenPromise = null;
+        rej(new Error(err.type || 'Auth error'));
+      } else {
+        showLogin();
+      }
+    },
+  });
+
+  // Check for saved token
+  const saved = localStorage.getItem('todo_gis_token');
+  if (saved) {
+    try {
+      const { token, expiry } = JSON.parse(saved);
+      if (Date.now() < expiry - 60000) {
+        accessToken = token;
+        tokenExpiry = expiry;
+        onAuthSuccess();
+        return;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // Try silent token refresh
+  try {
+    tokenClient.requestAccessToken({ prompt: '' });
+  } catch (e) {
+    showLogin();
+  }
+}
+
+function showLogin() {
+  document.getElementById('authStatus').textContent = 'Sign in to sync your tasks with Google Drive';
+  document.getElementById('authBtn').style.display = '';
+  document.getElementById('authBtn').textContent = 'Sign in with Google';
+}
+
+async function onAuthSuccess() {
+  document.getElementById('authStatus').textContent = 'Loading your tasks...';
+  document.getElementById('authBtn').style.display = 'none';
+  showLoading();
+  try {
+    fileId = localStorage.getItem('todo_drive_file_id');
+    await findOrCreateFile();
+    data = await readFromDrive();
+    document.getElementById('authScreen').style.display = 'none';
+    document.getElementById('app').style.display = '';
+    render();
+  } catch (err) {
+    console.error('Load failed:', err);
+    document.getElementById('authStatus').textContent = 'Failed to load. Please try again.';
+    document.getElementById('authBtn').style.display = '';
+    document.getElementById('authBtn').textContent = 'Retry';
+  } finally {
+    hideLoading();
+  }
+}
+
+async function ensureToken() {
+  if (accessToken && Date.now() < tokenExpiry - 60000) return;
+  if (tokenPromise) return tokenPromise;
+  tokenPromise = new Promise((resolve, reject) => {
+    tokenResolve = resolve;
+    tokenReject = reject;
+    tokenClient.requestAccessToken({ prompt: '' });
+  });
+  return tokenPromise;
+}
+
+// ═══════════════════════════════════════════════
+//  Drive API
+// ═══════════════════════════════════════════════
+async function driveRequest(url, options = {}) {
+  await ensureToken();
+  let resp = await fetch(url, {
+    ...options,
+    headers: { 'Authorization': `Bearer ${accessToken}`, ...(options.headers || {}) },
+  });
+  if (resp.status === 401) {
+    // Token expired mid-request — force refresh and retry once
+    accessToken = null;
+    tokenExpiry = 0;
+    await ensureToken();
+    resp = await fetch(url, {
+      ...options,
+      headers: { 'Authorization': `Bearer ${accessToken}`, ...(options.headers || {}) },
+    });
+  }
+  return resp;
+}
+
+async function findOrCreateFile() {
+  // If we have a cached fileId, verify it still exists
+  if (fileId) {
+    const resp = await driveRequest(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id`
+    );
+    if (resp.ok) return;
+    fileId = null;
+  }
+
+  // Search by name
+  const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+  const resp = await driveRequest(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id)`
+  );
+  const result = await resp.json();
+
+  if (result.files && result.files.length > 0) {
+    fileId = result.files[0].id;
+    localStorage.setItem('todo_drive_file_id', fileId);
+    return;
+  }
+
+  // Create new file with empty data
+  const metadata = { name: DRIVE_FILE_NAME, mimeType: 'application/json' };
+  const initial = { version: 1, lastModified: new Date().toISOString(), items: [], archive: [] };
+  const boundary = '===todo_boundary===';
+  const body = [
+    `--${boundary}`,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    JSON.stringify(metadata),
+    `--${boundary}`,
+    'Content-Type: application/json',
+    '',
+    JSON.stringify(initial),
+    `--${boundary}--`,
+  ].join('\r\n');
+
+  const createResp = await driveRequest(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+    }
+  );
+  const created = await createResp.json();
+  fileId = created.id;
+  localStorage.setItem('todo_drive_file_id', fileId);
+}
+
+async function readFromDrive() {
+  if (!fileId) await findOrCreateFile();
+  const resp = await driveRequest(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
+  );
+  if (!resp.ok) {
+    if (resp.status === 404) {
+      fileId = null;
+      localStorage.removeItem('todo_drive_file_id');
+      await findOrCreateFile();
+      return readFromDrive();
+    }
+    throw new Error(`Drive read failed: ${resp.status}`);
+  }
+  return resp.json();
+}
+
+async function writeToDrive(d) {
+  d.lastModified = new Date().toISOString();
+  if (!fileId) await findOrCreateFile();
+  const resp = await driveRequest(
+    `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(d),
+    }
+  );
+  if (!resp.ok) {
+    if (resp.status === 404) {
+      fileId = null;
+      localStorage.removeItem('todo_drive_file_id');
+      await findOrCreateFile();
+      return writeToDrive(d);
+    }
+    throw new Error(`Drive write failed: ${resp.status}`);
+  }
+}
+
+async function refreshData() {
+  if (!accessToken) return;
+  showLoading();
+  try {
+    data = await readFromDrive();
+    render();
+  } catch (err) {
+    console.error('Refresh failed:', err);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function mutate(fn) {
+  mutationQueue = mutationQueue.then(async () => {
+    showLoading();
+    try {
+      data = await readFromDrive();
+      fn();
+      await writeToDrive(data);
+      render();
+    } catch (err) {
+      console.error('Mutation failed:', err);
+    } finally {
+      hideLoading();
+    }
+  });
+  return mutationQueue;
+}
+
+// ═══════════════════════════════════════════════
+//  Data Helpers
+// ═══════════════════════════════════════════════
+function getCurrentItems() {
+  let items = data.items;
+  for (let i = 0; i < navStack.length; i++) {
+    const cat = items.find(item => item.id === navStack[i]);
+    if (!cat) {
+      navStack.length = i; // trim stale nav
+      break;
+    }
+    items = cat.children;
+  }
+  return items;
+}
+
+function findItemById(id, items = data.items) {
+  for (const item of items) {
+    if (item.id === id) return item;
+    if (item.children && item.children.length) {
+      const found = findItemById(id, item.children);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function findParentOf(id, items = data.items) {
+  for (const item of items) {
+    if (item.children && item.children.some(c => c.id === id)) return { parent: item, list: item.children };
+    if (item.children && item.children.length) {
+      const found = findParentOf(id, item.children);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function isAllDone(item) {
+  if (item.type === 'item') return item.status === 'done';
+  if (!item.children || !item.children.length) return false;
+  return item.children.every(c => isAllDone(c));
+}
+
+function sortItems(items) {
+  const todo = items.filter(i => i.type === 'item' ? i.status !== 'done' : !isAllDone(i));
+  const done = items.filter(i => i.type === 'item' ? i.status === 'done' : isAllDone(i));
+  todo.sort((a, b) => a.order - b.order);
+  done.sort((a, b) => a.order - b.order);
+  return [...todo, ...done];
+}
+
+function searchAll(query, items = data.items, path = []) {
+  let results = [];
+  const q = query.toLowerCase();
+  for (const item of items) {
+    const matchName = item.name.toLowerCase().includes(q);
+    const matchDesc = (item.description || '').toLowerCase().includes(q);
+    if (matchName || matchDesc) {
+      results.push({ item, path: [...path] });
+    }
+    if (item.children && item.children.length) {
+      results = results.concat(searchAll(query, item.children, [...path, item.name]));
+    }
+  }
+  return results;
+}
+
+function getPathNames() {
+  const names = ['Home'];
+  let items = data.items;
+  for (const cid of navStack) {
+    const cat = items.find(i => i.id === cid);
+    if (!cat) break;
+    names.push(cat.name);
+    items = cat.children;
+  }
+  return names;
+}
+
+function removeFromTree(id, items = data.items) {
+  const idx = items.findIndex(i => i.id === id);
+  if (idx !== -1) { items.splice(idx, 1); return true; }
+  for (const item of items) {
+    if (item.children && item.children.length && removeFromTree(id, item.children)) return true;
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════════
+//  Rendering
+// ═══════════════════════════════════════════════
+function render() {
+  renderBreadcrumbs();
+  if (archiveView) {
+    renderArchive();
+  } else if (searchQuery) {
+    renderSearch();
+  } else {
+    renderList();
+  }
+}
+
+function renderBreadcrumbs() {
+  const bc = document.getElementById('breadcrumbs');
+  if (archiveView) {
+    bc.innerHTML = '<span class="crumb active">Archive</span>';
+    return;
+  }
+  const names = getPathNames();
+  bc.innerHTML = names.map((name, i) => {
+    const isLast = i === names.length - 1;
+    const sep = i > 0 ? '<span class="crumb-sep">\u203a</span>' : '';
+    return `${sep}<span class="crumb ${isLast ? 'active' : ''}" data-depth="${i}">${esc(name)}</span>`;
+  }).join('');
+
+  bc.querySelectorAll('.crumb:not(.active)').forEach(el => {
+    el.addEventListener('click', () => {
+      const depth = parseInt(el.dataset.depth);
+      navStack = navStack.slice(0, depth);
+      render();
+    });
+  });
+}
+
+function renderList(animClass = '') {
+  const container = document.getElementById('listContainer');
+  const items = sortItems(getCurrentItems());
+
+  if (items.length === 0) {
+    container.innerHTML = `
+      <div class="list-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>Nothing here yet.<br>Tap + to add something.</div>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = items.map((item, idx) => buildRowHTML(item, idx, animClass)).join('');
+  attachRowListeners(container);
+}
+
+function buildRowHTML(item, idx, animClass = '') {
+  const isDone = item.type === 'item' ? item.status === 'done' : isAllDone(item);
+  const doneClass = isDone ? 'done' : '';
+  const delay = idx * 30;
+
+  let indicator;
+  if (item.type === 'category') {
+    indicator = `<div class="category-indicator">${ICONS.folder}</div>`;
+  } else {
+    indicator = `<div class="item-indicator">${ICONS.check}</div>`;
+  }
+
+  let textHTML = `<span class="item-name">${esc(item.name)}</span>`;
+  if (item.description) {
+    textHTML += `<span class="item-desc-sep">&mdash;</span><span class="item-desc">${esc(item.description)}</span>`;
+  }
+
+  const chevron = item.type === 'category' ? `<div class="item-chevron">${ICONS.chevron}</div>` : '';
+
+  return `<div class="item-row ${doneClass} ${animClass}" data-id="${item.id}" style="animation-delay:${delay}ms">
+    ${indicator}
+    <div class="item-content"><div class="item-text">${textHTML}</div></div>
+    ${chevron}
+  </div>`;
+}
+
+function renderSearch() {
+  const container = document.getElementById('listContainer');
+  const results = searchAll(searchQuery);
+
+  if (results.length === 0) {
+    container.innerHTML = `<div class="list-empty"><div>No items match your search.</div></div>`;
+    return;
+  }
+
+  container.innerHTML = results.map(({ item, path }, idx) => {
+    const isDone = item.type === 'item' ? item.status === 'done' : isAllDone(item);
+    const doneClass = isDone ? 'done' : '';
+    let indicator = item.type === 'category'
+      ? `<div class="category-indicator">${ICONS.folder}</div>`
+      : `<div class="item-indicator">${ICONS.check}</div>`;
+
+    let textHTML = `<span class="item-name">${esc(item.name)}</span>`;
+    if (item.description) {
+      textHTML += `<span class="item-desc-sep">&mdash;</span><span class="item-desc">${esc(item.description)}</span>`;
+    }
+    const pathStr = path.length ? path.join(' \u203a ') + ' \u203a' : 'Home \u203a';
+
+    return `<div class="item-row ${doneClass} item-enter" data-id="${item.id}" data-search="true" style="animation-delay:${idx*30}ms">
+      ${indicator}
+      <div class="item-content">
+        <div class="item-text">${textHTML}</div>
+        <div class="search-result-path">${esc(pathStr)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('.item-row').forEach(row => {
+    row.addEventListener('click', () => navigateToItem(row.dataset.id));
+  });
+}
+
+function navigateToItem(id) {
+  function findPath(id, items, path = []) {
+    for (const item of items) {
+      if (item.id === id) return path;
+      if (item.children && item.children.length) {
+        const found = findPath(id, item.children, [...path, item.id]);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  const path = findPath(id, data.items);
+  if (path) {
+    searchQuery = '';
+    document.getElementById('searchInput').value = '';
+    navStack = path;
+    render();
+  }
+}
+
+function renderArchive() {
+  const container = document.getElementById('listContainer');
+  let html = `<div class="archive-header">
+    <button class="archive-back" id="archiveBack">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="archive-title">Archive</div>
+  </div>`;
+
+  if (data.archive.length === 0) {
+    html += `<div class="list-empty"><div>Archive is empty.</div></div>`;
+  } else {
+    html += data.archive.map((item, idx) => {
+      let indicator = item.type === 'category'
+        ? `<div class="category-indicator">${ICONS.folder}</div>`
+        : `<div class="item-indicator">${ICONS.check}</div>`;
+      let textHTML = `<span class="item-name">${esc(item.name)}</span>`;
+      if (item.description) {
+        textHTML += `<span class="item-desc-sep">&mdash;</span><span class="item-desc">${esc(item.description)}</span>`;
+      }
+      return `<div class="item-row item-enter" data-id="${item.id}" data-archive="true" style="animation-delay:${idx*30}ms">
+        ${indicator}
+        <div class="item-content"><div class="item-text">${textHTML}</div></div>
+      </div>`;
+    }).join('');
+  }
+
+  container.innerHTML = html;
+
+  document.getElementById('archiveBack').addEventListener('click', () => {
+    archiveView = false;
+    render();
+  });
+
+  container.querySelectorAll('[data-archive="true"]').forEach(row => {
+    row.addEventListener('click', async () => {
+      const id = row.dataset.id;
+      await mutate(() => {
+        const idx = data.archive.findIndex(i => i.id === id);
+        if (idx === -1) return;
+        const item = data.archive.splice(idx, 1)[0];
+        const parentId = item.archivedFrom;
+        delete item.archivedFrom;
+
+        const parent = parentId ? findItemById(parentId) : null;
+        if (parent && parent.children) {
+          item.order = parent.children.length;
+          parent.children.push(item);
+        } else {
+          item.order = data.items.length;
+          data.items.push(item);
+        }
+      });
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  Row Event Listeners (tap, long press, drag)
+// ═══════════════════════════════════════════════
+function attachRowListeners(container) {
+  container.querySelectorAll('.item-row').forEach(row => {
+    let touchStartTime;
+    let hasMoved = false;
+    let contextMenuShownDuringPress = false;
+
+    const onPointerDown = (e) => {
+      if (e.button && e.button !== 0) return;
+      const id = row.dataset.id;
+      const item = findItemById(id);
+      if (!item) return;
+
+      touchStartTime = Date.now();
+      hasMoved = false;
+      longPressTriggered = false;
+      contextMenuShownDuringPress = false;
+      pressStartPos = { x: e.clientX, y: e.clientY };
+
+      longPressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        contextMenuShownDuringPress = true;
+        if (navigator.vibrate) navigator.vibrate(30);
+        openContextMenu(item);
+      }, 400);
+
+      row.addEventListener('pointermove', onPointerMove);
+      row.addEventListener('pointerup', onPointerUp);
+      row.addEventListener('pointercancel', onPointerCancel);
+      row.setPointerCapture(e.pointerId);
+    };
+
+    const onPointerMove = (e) => {
+      if (!pressStartPos) return;
+      const dx = Math.abs(e.clientX - pressStartPos.x);
+      const dy = Math.abs(e.clientY - pressStartPos.y);
+      if (dx > 8 || dy > 8) {
+        hasMoved = true;
+        if (!longPressTriggered) {
+          clearTimeout(longPressTimer);
+        }
+      }
+
+      // If context menu was shown during this press and user starts moving, dismiss and start drag
+      if (contextMenuShownDuringPress && hasMoved && !dragState) {
+        forceCloseOverlay();
+        contextMenuShownDuringPress = false;
+        const id = row.dataset.id;
+        const item = findItemById(id);
+        startDrag(row, item, e);
+      }
+
+      if (dragState) {
+        updateDrag(e);
+      }
+    };
+
+    const onPointerUp = (e) => {
+      clearTimeout(longPressTimer);
+      row.removeEventListener('pointermove', onPointerMove);
+      row.removeEventListener('pointerup', onPointerUp);
+      row.removeEventListener('pointercancel', onPointerCancel);
+
+      if (dragState) {
+        endDrag(e);
+        return;
+      }
+
+      // If context menu was shown and user released without moving, leave it open
+      if (contextMenuShownDuringPress && !hasMoved) {
+        pressStartPos = null;
+        return;
+      }
+
+      if (!hasMoved && Date.now() - touchStartTime < 400) {
+        // Short tap
+        const id = row.dataset.id;
+        const item = findItemById(id);
+        if (item.type === 'category') {
+          navStack.push(item.id);
+          render();
+        } else {
+          toggleDone(item);
+        }
+      }
+
+      pressStartPos = null;
+    };
+
+    const onPointerCancel = () => {
+      clearTimeout(longPressTimer);
+      row.removeEventListener('pointermove', onPointerMove);
+      row.removeEventListener('pointerup', onPointerUp);
+      row.removeEventListener('pointercancel', onPointerCancel);
+      if (dragState) endDrag();
+      pressStartPos = null;
+    };
+
+    row.addEventListener('pointerdown', onPointerDown);
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  Item Actions (async, Drive-backed)
+// ═══════════════════════════════════════════════
+async function toggleDone(item) {
+  const itemId = item.id;
+  await mutate(() => {
+    const it = findItemById(itemId);
+    if (!it || it.type !== 'item') return;
+
+    const pr = findParentOf(itemId);
+    const list = pr ? pr.list : data.items;
+
+    if (it.status === 'done') {
+      it.status = 'todo';
+      const todoItems = list.filter(i =>
+        i.id !== itemId && (i.type === 'item' ? i.status !== 'done' : !isAllDone(i))
+      );
+      it.order = todoItems.length ? Math.min(...todoItems.map(i => i.order)) - 1 : 0;
+    } else {
+      it.status = 'done';
+    }
+  });
+}
+
+async function archiveItem(item) {
+  const itemId = item.id;
+  await mutate(() => {
+    const it = findItemById(itemId);
+    if (!it) return;
+    const pr = findParentOf(itemId);
+    it.archivedFrom = pr ? pr.parent.id : null;
+    removeFromTree(itemId);
+    data.archive.push(it);
+  });
+}
+
+async function moveItemUp(item) {
+  const itemId = item.id;
+  await mutate(() => {
+    if (navStack.length === 0) return;
+    const pr = findParentOf(itemId);
+    if (!pr) return;
+    const it = findItemById(itemId);
+    const idx = pr.list.findIndex(i => i.id === itemId);
+    pr.list.splice(idx, 1);
+
+    let gpList = data.items;
+    for (let i = 0; i < navStack.length - 1; i++) {
+      const cat = gpList.find(c => c.id === navStack[i]);
+      if (cat) gpList = cat.children;
+    }
+    it.order = gpList.length;
+    gpList.push(it);
+  });
+}
+
+async function deleteItem(item) {
+  const itemId = item.id;
+  await mutate(() => { removeFromTree(itemId); });
+}
+
+// ═══════════════════════════════════════════════
+//  Context Menu
+// ═══════════════════════════════════════════════
+function openContextMenu(item) {
+  contextItem = item;
+  const nameEl = document.getElementById('ctxName');
+  const descEl = document.getElementById('ctxDesc');
+  const actionsEl = document.getElementById('ctxActions');
+
+  nameEl.textContent = item.name;
+  descEl.textContent = item.description || 'No description';
+  descEl.style.fontStyle = item.description ? 'normal' : 'italic';
+
+  let actions = [
+    { icon: ICONS.edit, label: 'Edit', action: 'edit' },
+    { icon: ICONS.archive, label: 'Archive', action: 'archive' },
+  ];
+
+  if (navStack.length > 0) {
+    actions.push({ icon: ICONS.moveUp, label: 'Move up a level', action: 'moveUp' });
+  }
+
+  actions.push({ icon: ICONS.trash, label: 'Delete', action: 'delete', danger: true });
+
+  actionsEl.innerHTML = actions.map(a =>
+    `<button class="ctx-action ${a.danger ? 'danger' : ''}" data-action="${a.action}">${a.icon} ${a.label}</button>`
+  ).join('');
+
+  actionsEl.querySelectorAll('.ctx-action').forEach(btn => {
+    btn.addEventListener('click', () => handleContextAction(btn.dataset.action));
+  });
+
+  showOverlay('contextMenu');
+}
+
+function handleContextAction(action) {
+  const item = contextItem;
+  if (!item) return;
+
+  switch (action) {
+    case 'edit':
+      closeOverlay();
+      setTimeout(() => openEditModal(item), 200);
+      break;
+    case 'archive':
+      closeOverlay();
+      archiveItem(item);
+      break;
+    case 'moveUp':
+      closeOverlay();
+      moveItemUp(item);
+      break;
+    case 'delete':
+      closeOverlay();
+      if (item.type === 'category' && item.children && item.children.length) {
+        showConfirm(`Delete "${item.name}" and all its contents?`, () => deleteItem(item));
+      } else {
+        deleteItem(item);
+      }
+      break;
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  Drag & Drop
+// ═══════════════════════════════════════════════
+function startDrag(rowEl, item, e) {
+  if (dragState) return;
+
+  const rect = rowEl.getBoundingClientRect();
+  const container = document.getElementById('listContainer');
+  const rows = [...container.querySelectorAll('.item-row')];
+  const rowIndex = rows.indexOf(rowEl);
+
+  const placeholder = document.createElement('div');
+  placeholder.className = 'drag-placeholder';
+  placeholder.style.height = rect.height + 'px';
+  rowEl.parentNode.insertBefore(placeholder, rowEl);
+
+  rowEl.classList.add('dragging');
+  rowEl.style.width = rect.width + 'px';
+  rowEl.style.top = rect.top + 'px';
+
+  dragState = {
+    itemId: item.id,
+    item,
+    rowEl,
+    placeholder,
+    startY: e.clientY,
+    offsetY: e.clientY - rect.top,
+    rowHeight: rect.height,
+    rows: rows.filter(r => r !== rowEl),
+    container,
+  };
+}
+
+function updateDrag(e) {
+  if (!dragState) return;
+
+  const top = e.clientY - dragState.offsetY;
+  dragState.rowEl.style.top = top + 'px';
+
+  dragState.rows.forEach(r => {
+    r.classList.remove('drop-target');
+    r.style.transform = '';
+  });
+
+  let insertIdx = dragState.rows.length;
+  for (let i = 0; i < dragState.rows.length; i++) {
+    const r = dragState.rows[i];
+    const rRect = r.getBoundingClientRect();
+    const midY = rRect.top + rRect.height / 2;
+    if (e.clientY < midY) {
+      insertIdx = i;
+      break;
+    }
+  }
+
+  for (let i = 0; i < dragState.rows.length; i++) {
+    const r = dragState.rows[i];
+    if (i >= insertIdx) {
+      r.style.transform = `translateY(${dragState.rowHeight}px)`;
+      r.style.transition = 'transform var(--transition-med)';
+    } else {
+      r.style.transform = '';
+      r.style.transition = 'transform var(--transition-med)';
+    }
+  }
+
+  for (const r of dragState.rows) {
+    const rid = r.dataset.id;
+    const rItem = findItemById(rid);
+    if (rItem && rItem.type === 'category') {
+      const rRect = r.getBoundingClientRect();
+      const within = e.clientY > rRect.top + 10 && e.clientY < rRect.bottom - 10
+                   && e.clientX > rRect.left + rRect.width * 0.3;
+      if (within) {
+        r.classList.add('drop-target');
+      }
+    }
+  }
+
+  dragState.insertIdx = insertIdx;
+}
+
+async function endDrag() {
+  if (!dragState) return;
+
+  const dropTarget = dragState.rows.find(r => r.classList.contains('drop-target'));
+  const draggedItemId = dragState.itemId;
+  const insertIdx = dragState.insertIdx;
+  const dropTargetId = dropTarget ? dropTarget.dataset.id : null;
+
+  // Cleanup UI immediately
+  dragState.rowEl.classList.remove('dragging');
+  dragState.rowEl.style = '';
+  dragState.placeholder.remove();
+  dragState.rows.forEach(r => {
+    r.classList.remove('drop-target');
+    r.style.transform = '';
+    r.style.transition = '';
+  });
+  dragState = null;
+
+  await mutate(() => {
+    if (dropTargetId) {
+      const targetItem = findItemById(dropTargetId);
+      const draggedItem = findItemById(draggedItemId);
+      if (targetItem && targetItem.type === 'category' && draggedItem) {
+        removeFromTree(draggedItemId);
+        draggedItem.order = targetItem.children.length;
+        targetItem.children.push(draggedItem);
+      }
+    } else {
+      const currentItems = getCurrentItems();
+      const sorted = sortItems(currentItems);
+      const draggedItem = findItemById(draggedItemId);
+      if (!draggedItem) return;
+      const dragIdx = sorted.findIndex(i => i.id === draggedItemId);
+      if (dragIdx !== -1) sorted.splice(dragIdx, 1);
+      const at = Math.min(insertIdx != null ? insertIdx : sorted.length, sorted.length);
+      sorted.splice(at, 0, draggedItem);
+      sorted.forEach((item, i) => item.order = i);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  Modals
+// ═══════════════════════════════════════════════
+function openCreateModal() {
+  modalMode = 'create';
+  editingItem = null;
+  modalDirty = false;
+  selectedType = 'item';
+
+  document.getElementById('modalTitle').textContent = 'Add New';
+  document.getElementById('modalName').value = '';
+  document.getElementById('modalDesc').value = '';
+  document.getElementById('modalSubmit').textContent = 'Add';
+  document.getElementById('modalSubmit').disabled = true;
+  updateTypeToggle();
+
+  showOverlay('modal');
+  setTimeout(() => document.getElementById('modalName').focus(), 300);
+}
+
+function openEditModal(item) {
+  modalMode = 'edit';
+  editingItem = item;
+  modalDirty = false;
+  selectedType = item.type;
+
+  document.getElementById('modalTitle').textContent = 'Edit';
+  document.getElementById('modalName').value = item.name;
+  document.getElementById('modalDesc').value = item.description || '';
+  document.getElementById('modalSubmit').textContent = 'Save';
+  document.getElementById('modalSubmit').disabled = false;
+  updateTypeToggle();
+
+  showOverlay('modal');
+  setTimeout(() => document.getElementById('modalName').focus(), 300);
+}
+
+function updateTypeToggle() {
+  document.querySelectorAll('.type-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.type === selectedType);
+  });
+}
+
+async function submitModal() {
+  const name = document.getElementById('modalName').value.trim();
+  if (!name) return;
+  const desc = document.getElementById('modalDesc').value.trim();
+  const mode = modalMode;
+  const editId = editingItem ? editingItem.id : null;
+  const type = selectedType;
+  const currentNav = [...navStack];
+
+  forceCloseOverlay();
+
+  if (mode === 'create') {
+    await mutate(() => {
+      let items = data.items;
+      for (const cid of currentNav) {
+        const cat = items.find(i => i.id === cid);
+        if (!cat) break;
+        items = cat.children;
+      }
+      const newItem = {
+        id: uuid(),
+        type: type,
+        name,
+        description: desc,
+        order: items.length,
+        children: [],
+      };
+      if (type === 'item') newItem.status = 'todo';
+      items.push(newItem);
+    });
+  } else if (mode === 'edit' && editId) {
+    await mutate(() => {
+      const freshItem = findItemById(editId);
+      if (!freshItem) return;
+      freshItem.name = name;
+      freshItem.description = desc;
+      freshItem.type = type;
+      if (type === 'item' && !freshItem.status) freshItem.status = 'todo';
+      if (type === 'category') delete freshItem.status;
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  Overlay Management
+// ═══════════════════════════════════════════════
+function showOverlay(id) {
+  activeOverlay = id;
+  document.getElementById('backdrop').classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+
+function closeOverlay() {
+  if (!activeOverlay) return;
+
+  if (activeOverlay === 'modal' && modalDirty) {
+    showConfirm('Close without submitting changes?', () => {
+      forceCloseOverlay();
+    });
+    return;
+  }
+
+  forceCloseOverlay();
+}
+
+function forceCloseOverlay() {
+  document.getElementById('backdrop').classList.remove('active');
+  if (activeOverlay) {
+    document.getElementById(activeOverlay).classList.remove('active');
+  }
+  activeOverlay = null;
+  contextItem = null;
+  editingItem = null;
+  modalDirty = false;
+}
+
+function showConfirm(text, onConfirm, confirmLabel = 'Yes', cancelLabel = 'Cancel') {
+  document.getElementById('confirmText').textContent = text;
+  const actions = document.getElementById('confirmActions');
+  actions.innerHTML = `
+    <button class="confirm-btn cancel" id="confirmCancel">${cancelLabel}</button>
+    <button class="confirm-btn confirm" id="confirmOk">${confirmLabel}</button>
+  `;
+  document.getElementById('confirmDialog').classList.add('active');
+
+  document.getElementById('confirmCancel').addEventListener('click', () => {
+    document.getElementById('confirmDialog').classList.remove('active');
+  });
+  document.getElementById('confirmOk').addEventListener('click', () => {
+    document.getElementById('confirmDialog').classList.remove('active');
+    forceCloseOverlay();
+    onConfirm();
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  Event Wiring
+// ═══════════════════════════════════════════════
+document.getElementById('backdrop').addEventListener('click', closeOverlay);
+
+document.getElementById('fabBtn').addEventListener('click', openCreateModal);
+
+document.getElementById('archiveBtn').addEventListener('click', () => {
+  archiveView = !archiveView;
+  searchQuery = '';
+  document.getElementById('searchInput').value = '';
+  if (archiveView) navStack = [];
+  render();
+});
+
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('refreshBtn');
+  btn.style.transform = 'rotate(360deg)';
+  btn.style.transition = 'transform 0.5s';
+  setTimeout(() => { btn.style.transform = ''; btn.style.transition = ''; }, 500);
+  await refreshData();
+});
+
+// Settings
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  document.getElementById('themeLabel').textContent = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+  showOverlay('settingsPanel');
+});
+
+document.getElementById('settingTheme').addEventListener('click', () => {
+  const html = document.documentElement;
+  const isLight = html.getAttribute('data-theme') === 'light';
+  if (isLight) {
+    html.removeAttribute('data-theme');
+    localStorage.setItem('todo_theme', 'dark');
+    document.getElementById('themeLabel').textContent = 'Switch to light mode';
+    document.querySelector('meta[name="theme-color"]').content = '#141417';
+  } else {
+    html.setAttribute('data-theme', 'light');
+    localStorage.setItem('todo_theme', 'light');
+    document.getElementById('themeLabel').textContent = 'Switch to dark mode';
+    document.querySelector('meta[name="theme-color"]').content = '#f8f7f5';
+  }
+});
+
+document.getElementById('settingArchiveAll').addEventListener('click', async () => {
+  forceCloseOverlay();
+  await mutate(() => {
+    function collectDone(items, parentId) {
+      const toArchive = [];
+      const toKeep = [];
+      for (const item of items) {
+        if (item.type === 'item' && item.status === 'done') {
+          item.archivedFrom = parentId;
+          toArchive.push(item);
+        } else {
+          if (item.children && item.children.length) {
+            const result = collectDone(item.children, item.id);
+            item.children = result.kept;
+            toArchive.push(...result.archived);
+          }
+          toKeep.push(item);
+        }
+      }
+      return { kept: toKeep, archived: toArchive };
+    }
+    const result = collectDone(data.items, null);
+    data.items = result.kept;
+    data.archive.push(...result.archived);
+  });
+});
+
+document.getElementById('settingExport').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `todo-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('settingImport').addEventListener('click', () => {
+  document.getElementById('importFileInput').click();
+});
+
+document.getElementById('importFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const imported = JSON.parse(text);
+    if (imported.items && imported.archive !== undefined) {
+      data = imported;
+      forceCloseOverlay();
+      navStack = [];
+      showLoading();
+      await writeToDrive(data);
+      hideLoading();
+      render();
+    } else {
+      alert('Invalid JSON structure.');
+    }
+  } catch (err) {
+    alert('Failed to parse JSON file.');
+  }
+  e.target.value = '';
+});
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  searchQuery = e.target.value.trim();
+  archiveView = false;
+  render();
+});
+
+// Type toggle
+document.getElementById('typeToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('.type-btn');
+  if (!btn) return;
+  selectedType = btn.dataset.type;
+  updateTypeToggle();
+  modalDirty = true;
+});
+
+// Modal input tracking
+document.getElementById('modalName').addEventListener('input', () => {
+  modalDirty = true;
+  document.getElementById('modalSubmit').disabled = !document.getElementById('modalName').value.trim();
+});
+document.getElementById('modalDesc').addEventListener('input', () => { modalDirty = true; });
+
+document.getElementById('modalSubmit').addEventListener('click', submitModal);
+
+// Enter to submit in modal
+document.getElementById('modalName').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submitModal();
+});
+
+// Escape to close
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('confirmDialog').classList.contains('active')) {
+      document.getElementById('confirmDialog').classList.remove('active');
+    } else if (activeOverlay) {
+      closeOverlay();
+    }
+  }
+});
+
+// Auth button
+document.getElementById('authBtn').addEventListener('click', () => {
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+});
+
+// Sync on visibility change
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && accessToken && document.getElementById('app').style.display !== 'none') {
+    refreshData();
+  }
+});
+
+// ═══════════════════════════════════════════════
+//  Boot
+// ═══════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+// Wait for GIS library to load, then initialize auth
+let authInitialized = false;
+function tryInitAuth() {
+  if (authInitialized) return;
+  if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+    authInitialized = true;
+    initAuth();
+  }
+}
+const gisScript = document.querySelector('script[src*="gsi/client"]');
+if (gisScript) gisScript.addEventListener('load', tryInitAuth);
+tryInitAuth();
+</script>
+</body>
+</html>
