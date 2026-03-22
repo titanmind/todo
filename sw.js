@@ -1,4 +1,4 @@
-const CACHE_NAME = 'todo-shell-v1';
+const CACHE_NAME = 'todo-shell-v2';
 const SHELL_ASSETS = [
   './todo-prototype.html',
   './manifest.json',
