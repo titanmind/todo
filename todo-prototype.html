@@ -593,7 +593,7 @@
   <div class="list-container" id="listContainer"></div>
 
   <!-- Version -->
-  <div class="version-label">v1.3.2</div>
+  <div class="version-label">v1.4.0</div>
 
   <!-- FAB -->
   <button class="fab" id="fabBtn" title="Add new">
@@ -684,20 +684,23 @@
 
 <input type="file" id="importFileInput" accept=".json" style="display:none">
 
-<script src="https://accounts.google.com/gsi/client" async></script>
 <script>
 // ═══════════════════════════════════════════════
 //  Configuration
 // ═══════════════════════════════════════════════
-const APP_VERSION = '1.3.2';
+const APP_VERSION = '1.4.0';
 const CLIENT_ID = '842400759802-7dla0o0vkr0p2250spaqpi8jrdf8p4ts.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'todo-data.json';
+const REDIRECT_URI = window.location.origin + window.location.pathname;
+const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 
 // ═══════════════════════════════════════════════
 //  Icons (reusable SVG strings)
 // ═══════════════════════════════════════════════
 const CHANGELOG = [
+  { version: '1.4.0', date: '2026-03-22', msg: 'Switch to OAuth2 PKCE auth flow — persistent login via refresh tokens' },
   { version: '1.3.2', date: '2026-03-22', msg: 'Fix drag — items no longer shift on drag start, only when dragged past a row boundary' },
   { version: '1.3.1', date: '2026-03-22', msg: 'Fix mobile drag shift — use stored midpoints instead of live getBoundingClientRect' },
   { version: '1.3.0', date: '2026-03-22', msg: 'Fix mobile drag — show context menu without backdrop during press to avoid pointercancel' },
@@ -726,12 +729,10 @@ const ICONS = {
 // ═══════════════════════════════════════════════
 //  Auth State
 // ═══════════════════════════════════════════════
-let tokenClient = null;
 let accessToken = null;
 let tokenExpiry = 0;
+let refreshTokenStr = null;
 let fileId = null;
-let tokenResolve = null;
-let tokenReject = null;
 let tokenPromise = null;
 
 // ═══════════════════════════════════════════════
@@ -790,50 +791,163 @@ function hideLoading() {
 }
 
 // ═══════════════════════════════════════════════
+//  PKCE Helpers
+// ═══════════════════════════════════════════════
+function base64UrlEncode(buffer) {
+  let str = '';
+  for (const byte of buffer) str += String.fromCharCode(byte);
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function generateCodeVerifier() {
+  return base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)));
+}
+
+async function generateCodeChallenge(verifier) {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return base64UrlEncode(new Uint8Array(hash));
+}
+
+// ═══════════════════════════════════════════════
 //  Auth
 // ═══════════════════════════════════════════════
-function initAuth() {
-  tokenClient = google.accounts.oauth2.initTokenClient({
+async function startAuth() {
+  const verifier = generateCodeVerifier();
+  sessionStorage.setItem('todo_pkce_verifier', verifier);
+  const challenge = await generateCodeChallenge(verifier);
+
+  const params = new URLSearchParams({
     client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
     scope: SCOPES,
-    callback: (resp) => {
-      if (resp.error) {
-        if (tokenReject) {
-          const rej = tokenReject;
-          tokenResolve = null; tokenReject = null; tokenPromise = null;
-          rej(new Error(resp.error));
-        } else {
-          showLogin();
-        }
-        return;
-      }
-      accessToken = resp.access_token;
-      tokenExpiry = Date.now() + ((resp.expires_in || 3600) * 1000);
-      localStorage.setItem('todo_gis_token', JSON.stringify({ token: accessToken, expiry: tokenExpiry }));
-      if (tokenResolve) {
-        const res = tokenResolve;
-        tokenResolve = null; tokenReject = null; tokenPromise = null;
-        res();
-      } else {
-        onAuthSuccess();
-      }
-    },
-    error_callback: (err) => {
-      if (tokenReject) {
-        const rej = tokenReject;
-        tokenResolve = null; tokenReject = null; tokenPromise = null;
-        rej(new Error(err.type || 'Auth error'));
-      } else {
-        showLogin();
-      }
-    },
+    access_type: 'offline',
+    prompt: 'consent',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
   });
 
-  // Check for saved token
-  const saved = localStorage.getItem('todo_gis_token');
-  if (saved) {
+  window.location.href = AUTH_ENDPOINT + '?' + params.toString();
+}
+
+async function exchangeCode(code) {
+  const verifier = sessionStorage.getItem('todo_pkce_verifier');
+  if (!verifier) throw new Error('Missing PKCE verifier');
+  sessionStorage.removeItem('todo_pkce_verifier');
+
+  const resp = await fetch(TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: CLIENT_ID,
+      code,
+      code_verifier: verifier,
+      grant_type: 'authorization_code',
+      redirect_uri: REDIRECT_URI,
+    }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error_description || err.error || 'Token exchange failed');
+  }
+
+  const tokens = await resp.json();
+  accessToken = tokens.access_token;
+  tokenExpiry = Date.now() + ((tokens.expires_in || 3600) * 1000);
+  localStorage.setItem('todo_access_token', JSON.stringify({ token: accessToken, expiry: tokenExpiry }));
+  if (tokens.refresh_token) {
+    refreshTokenStr = tokens.refresh_token;
+    localStorage.setItem('todo_refresh_token', refreshTokenStr);
+  }
+}
+
+async function silentRefresh() {
+  if (!refreshTokenStr) throw new Error('No refresh token');
+
+  const resp = await fetch(TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: CLIENT_ID,
+      grant_type: 'refresh_token',
+      refresh_token: refreshTokenStr,
+    }),
+  });
+
+  if (!resp.ok) {
+    localStorage.removeItem('todo_refresh_token');
+    localStorage.removeItem('todo_access_token');
+    refreshTokenStr = null;
+    accessToken = null;
+    tokenExpiry = 0;
+    throw new Error('Refresh token expired or revoked');
+  }
+
+  const tokens = await resp.json();
+  accessToken = tokens.access_token;
+  tokenExpiry = Date.now() + ((tokens.expires_in || 3600) * 1000);
+  localStorage.setItem('todo_access_token', JSON.stringify({ token: accessToken, expiry: tokenExpiry }));
+  // Google may rotate the refresh token
+  if (tokens.refresh_token) {
+    refreshTokenStr = tokens.refresh_token;
+    localStorage.setItem('todo_refresh_token', refreshTokenStr);
+  }
+}
+
+async function initAuth() {
+  // Clean up old GIS token key
+  localStorage.removeItem('todo_gis_token');
+
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const error = params.get('error');
+
+  // Clean OAuth params from URL
+  if (code || error) {
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
+  // OAuth error (user denied consent, etc.)
+  if (error) {
+    showLogin(error === 'access_denied'
+      ? 'Access denied. Please sign in to continue.'
+      : 'Authentication failed. Please try again.');
+    return;
+  }
+
+  // Returning from OAuth redirect with authorization code
+  if (code) {
+    document.getElementById('authStatus').textContent = 'Completing sign-in...';
     try {
-      const { token, expiry } = JSON.parse(saved);
+      await exchangeCode(code);
+      onAuthSuccess();
+      return;
+    } catch (e) {
+      console.error('Code exchange failed:', e);
+      showLogin('Sign-in failed. Please try again.');
+      return;
+    }
+  }
+
+  // Try saved refresh token (silent renewal — no UI needed)
+  const savedRefresh = localStorage.getItem('todo_refresh_token');
+  if (savedRefresh) {
+    refreshTokenStr = savedRefresh;
+    try {
+      await silentRefresh();
+      onAuthSuccess();
+      return;
+    } catch (e) {
+      console.warn('Refresh token expired:', e);
+    }
+  }
+
+  // Try saved access token (might still be valid within the hour)
+  const savedAccess = localStorage.getItem('todo_access_token');
+  if (savedAccess) {
+    try {
+      const { token, expiry } = JSON.parse(savedAccess);
       if (Date.now() < expiry - 60000) {
         accessToken = token;
         tokenExpiry = expiry;
@@ -843,18 +957,17 @@ function initAuth() {
     } catch (e) { /* ignore */ }
   }
 
-  // Try silent token refresh
-  try {
-    tokenClient.requestAccessToken({ prompt: '' });
-  } catch (e) {
-    showLogin();
-  }
+  showLogin();
 }
 
-function showLogin() {
-  document.getElementById('authStatus').textContent = 'Sign in to sync your tasks with Google Drive';
+function showLogin(message) {
+  document.getElementById('authStatus').textContent = message || 'Sign in to sync your tasks with Google Drive';
   document.getElementById('authBtn').style.display = '';
   document.getElementById('authBtn').textContent = 'Sign in with Google';
+  if (document.getElementById('app').style.display !== 'none') {
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('authScreen').style.display = '';
+  }
 }
 
 async function onAuthSuccess() {
@@ -881,11 +994,16 @@ async function onAuthSuccess() {
 async function ensureToken() {
   if (accessToken && Date.now() < tokenExpiry - 60000) return;
   if (tokenPromise) return tokenPromise;
-  tokenPromise = new Promise((resolve, reject) => {
-    tokenResolve = resolve;
-    tokenReject = reject;
-    tokenClient.requestAccessToken({ prompt: '' });
-  });
+  if (!refreshTokenStr) {
+    showLogin('Session expired. Please sign in again.');
+    throw new Error('No refresh token');
+  }
+  tokenPromise = silentRefresh()
+    .catch(e => {
+      showLogin('Session expired. Please sign in again.');
+      throw e;
+    })
+    .finally(() => { tokenPromise = null; });
   return tokenPromise;
 }
 
@@ -2002,7 +2120,7 @@ document.addEventListener('keydown', (e) => {
 
 // Auth button
 document.getElementById('authBtn').addEventListener('click', () => {
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  startAuth();
 });
 
 // Sync on visibility change
@@ -2019,28 +2137,21 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
 }
 
-// Auto-update check — fetch version.txt (always fresh) and reload if stale
-fetch('version.txt?_=' + Date.now())
-  .then(r => r.ok ? r.text() : null)
-  .then(v => {
-    if (v && v.trim() !== APP_VERSION) {
-      window.location.href = window.location.pathname + '?_=' + Date.now();
-    }
-  })
-  .catch(() => {});
-
-// Wait for GIS library to load, then initialize auth
-let authInitialized = false;
-function tryInitAuth() {
-  if (authInitialized) return;
-  if (window.google && window.google.accounts && window.google.accounts.oauth2) {
-    authInitialized = true;
-    initAuth();
-  }
+// Auto-update check — skip if returning from OAuth redirect
+const _bootParams = new URLSearchParams(window.location.search);
+if (!_bootParams.has('code') && !_bootParams.has('error')) {
+  fetch('version.txt?_=' + Date.now())
+    .then(r => r.ok ? r.text() : null)
+    .then(v => {
+      if (v && v.trim() !== APP_VERSION) {
+        window.location.href = window.location.pathname + '?_=' + Date.now();
+      }
+    })
+    .catch(() => {});
 }
-const gisScript = document.querySelector('script[src*="gsi/client"]');
-if (gisScript) gisScript.addEventListener('load', tryInitAuth);
-tryInitAuth();
+
+// Initialize auth (no external library needed)
+initAuth();
 </script>
 </body>
 </html>
