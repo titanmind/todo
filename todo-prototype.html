@@ -593,7 +593,7 @@
   <div class="list-container" id="listContainer"></div>
 
   <!-- Version -->
-  <div class="version-label">v1.3.0</div>
+  <div class="version-label">v1.3.1</div>
 
   <!-- FAB -->
   <button class="fab" id="fabBtn" title="Add new">
@@ -689,7 +689,7 @@
 // ═══════════════════════════════════════════════
 //  Configuration
 // ═══════════════════════════════════════════════
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const CLIENT_ID = '842400759802-7dla0o0vkr0p2250spaqpi8jrdf8p4ts.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'todo-data.json';
@@ -698,6 +698,7 @@ const DRIVE_FILE_NAME = 'todo-data.json';
 //  Icons (reusable SVG strings)
 // ═══════════════════════════════════════════════
 const CHANGELOG = [
+  { version: '1.3.1', date: '2026-03-22', msg: 'Fix mobile drag shift — use stored midpoints instead of live getBoundingClientRect' },
   { version: '1.3.0', date: '2026-03-22', msg: 'Fix mobile drag — show context menu without backdrop during press to avoid pointercancel' },
   { version: '1.2.6', date: '2026-03-22', msg: 'Fix drag-to-reorder on mobile — freeze scroll during drag, re-capture pointer, preventDefault' },
   { version: '1.2.5', date: '2026-03-22', msg: 'Fix drag-to-reorder on mobile — remove pointer-events:none from dragging state' },
@@ -1566,8 +1567,9 @@ function startDrag(rowEl, item, e) {
   const rect = rowEl.getBoundingClientRect();
   const container = document.getElementById('listContainer');
   const rows = [...container.querySelectorAll('.item-row')];
+  const otherRows = rows.filter(r => r !== rowEl);
 
-  // Freeze scroll during drag — prevents mobile scroll from stealing touch events
+  // Freeze scroll during drag
   container.style.overflowY = 'hidden';
 
   const placeholder = document.createElement('div');
@@ -1579,6 +1581,17 @@ function startDrag(rowEl, item, e) {
   rowEl.style.width = rect.width + 'px';
   rowEl.style.top = rect.top + 'px';
 
+  // Capture original midpoints ONCE — never call getBoundingClientRect during drag
+  const midpoints = otherRows.map(r => {
+    const rr = r.getBoundingClientRect();
+    return rr.top + rr.height / 2;
+  });
+
+  // Pre-set transition on all rows so transforms animate
+  otherRows.forEach(r => {
+    r.style.transition = 'transform 250ms cubic-bezier(0.23,1,0.32,1)';
+  });
+
   dragState = {
     itemId: item.id,
     item,
@@ -1587,8 +1600,10 @@ function startDrag(rowEl, item, e) {
     startY: e.clientY,
     offsetY: e.clientY - rect.top,
     rowHeight: rect.height,
-    rows: rows.filter(r => r !== rowEl),
+    rows: otherRows,
+    midpoints,
     container,
+    lastInsertIdx: -1,
   };
 }
 
@@ -1598,45 +1613,36 @@ function updateDrag(e) {
   const top = e.clientY - dragState.offsetY;
   dragState.rowEl.style.top = top + 'px';
 
-  dragState.rows.forEach(r => {
-    r.classList.remove('drop-target');
-    r.style.transform = '';
-  });
-
+  // Compute insert position from stored midpoints (no reflow)
   let insertIdx = dragState.rows.length;
-  for (let i = 0; i < dragState.rows.length; i++) {
-    const r = dragState.rows[i];
-    const rRect = r.getBoundingClientRect();
-    const midY = rRect.top + rRect.height / 2;
-    if (e.clientY < midY) {
+  for (let i = 0; i < dragState.midpoints.length; i++) {
+    if (e.clientY < dragState.midpoints[i]) {
       insertIdx = i;
       break;
     }
   }
 
-  for (let i = 0; i < dragState.rows.length; i++) {
-    const r = dragState.rows[i];
-    if (i >= insertIdx) {
-      r.style.transform = `translateY(${dragState.rowHeight}px)`;
-      r.style.transition = 'transform var(--transition-med)';
-    } else {
-      r.style.transform = '';
-      r.style.transition = 'transform var(--transition-med)';
+  // Only update transforms when insertIdx changes
+  if (insertIdx !== dragState.lastInsertIdx) {
+    dragState.lastInsertIdx = insertIdx;
+    for (let i = 0; i < dragState.rows.length; i++) {
+      dragState.rows[i].style.transform = i >= insertIdx
+        ? `translateY(${dragState.rowHeight}px)`
+        : '';
     }
   }
 
-  for (const r of dragState.rows) {
-    const rid = r.dataset.id;
-    const rItem = findItemById(rid);
+  // Drop-into-category detection (uses stored midpoints too)
+  dragState.rows.forEach((r, i) => {
+    r.classList.remove('drop-target');
+    const rItem = findItemById(r.dataset.id);
     if (rItem && rItem.type === 'category') {
-      const rRect = r.getBoundingClientRect();
-      const within = e.clientY > rRect.top + 10 && e.clientY < rRect.bottom - 10
-                   && e.clientX > rRect.left + rRect.width * 0.3;
-      if (within) {
-        r.classList.add('drop-target');
-      }
+      const mid = dragState.midpoints[i];
+      const halfH = dragState.rowHeight / 2;
+      const within = e.clientY > mid - halfH + 10 && e.clientY < mid + halfH - 10;
+      if (within) r.classList.add('drop-target');
     }
-  }
+  });
 
   dragState.insertIdx = insertIdx;
 }
