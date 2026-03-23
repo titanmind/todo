@@ -593,7 +593,7 @@
   <div class="list-container" id="listContainer"></div>
 
   <!-- Version -->
-  <div class="version-label">v1.2.5</div>
+  <div class="version-label">v1.2.6</div>
 
   <!-- FAB -->
   <button class="fab" id="fabBtn" title="Add new">
@@ -689,7 +689,7 @@
 // ═══════════════════════════════════════════════
 //  Configuration
 // ═══════════════════════════════════════════════
-const APP_VERSION = '1.2.5';
+const APP_VERSION = '1.2.6';
 const CLIENT_ID = '842400759802-7dla0o0vkr0p2250spaqpi8jrdf8p4ts.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'todo-data.json';
@@ -698,6 +698,7 @@ const DRIVE_FILE_NAME = 'todo-data.json';
 //  Icons (reusable SVG strings)
 // ═══════════════════════════════════════════════
 const CHANGELOG = [
+  { version: '1.2.6', date: '2026-03-22', msg: 'Fix drag-to-reorder on mobile — freeze scroll during drag, re-capture pointer, preventDefault' },
   { version: '1.2.5', date: '2026-03-22', msg: 'Fix drag-to-reorder on mobile — remove pointer-events:none from dragging state' },
   { version: '1.2.4', date: '2026-03-22', msg: 'Auto-update test' },
   { version: '1.2.3', date: '2026-03-22', msg: 'Auto-update mechanism via version.txt' },
@@ -1364,9 +1365,12 @@ function attachRowListeners(container) {
         const id = row.dataset.id;
         const item = findItemById(id);
         startDrag(row, item, e);
+        // Re-capture pointer — overlay may have disrupted capture on mobile
+        try { row.setPointerCapture(e.pointerId); } catch (ex) {}
       }
 
       if (dragState) {
+        e.preventDefault();
         updateDrag(e);
       }
     };
@@ -1537,7 +1541,9 @@ function startDrag(rowEl, item, e) {
   const rect = rowEl.getBoundingClientRect();
   const container = document.getElementById('listContainer');
   const rows = [...container.querySelectorAll('.item-row')];
-  const rowIndex = rows.indexOf(rowEl);
+
+  // Freeze scroll during drag — prevents mobile scroll from stealing touch events
+  container.style.overflowY = 'hidden';
 
   const placeholder = document.createElement('div');
   placeholder.className = 'drag-placeholder';
@@ -1622,6 +1628,7 @@ async function endDrag() {
   dragState.rowEl.classList.remove('dragging');
   dragState.rowEl.style = '';
   dragState.placeholder.remove();
+  dragState.container.style.overflowY = '';
   dragState.rows.forEach(r => {
     r.classList.remove('drop-target');
     r.style.transform = '';
