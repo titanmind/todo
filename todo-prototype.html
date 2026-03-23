@@ -593,7 +593,7 @@
   <div class="list-container" id="listContainer"></div>
 
   <!-- Version -->
-  <div class="version-label">v1.3.1</div>
+  <div class="version-label">v1.3.2</div>
 
   <!-- FAB -->
   <button class="fab" id="fabBtn" title="Add new">
@@ -689,7 +689,7 @@
 // ═══════════════════════════════════════════════
 //  Configuration
 // ═══════════════════════════════════════════════
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.3.2';
 const CLIENT_ID = '842400759802-7dla0o0vkr0p2250spaqpi8jrdf8p4ts.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'todo-data.json';
@@ -698,6 +698,7 @@ const DRIVE_FILE_NAME = 'todo-data.json';
 //  Icons (reusable SVG strings)
 // ═══════════════════════════════════════════════
 const CHANGELOG = [
+  { version: '1.3.2', date: '2026-03-22', msg: 'Fix drag — items no longer shift on drag start, only when dragged past a row boundary' },
   { version: '1.3.1', date: '2026-03-22', msg: 'Fix mobile drag shift — use stored midpoints instead of live getBoundingClientRect' },
   { version: '1.3.0', date: '2026-03-22', msg: 'Fix mobile drag — show context menu without backdrop during press to avoid pointercancel' },
   { version: '1.2.6', date: '2026-03-22', msg: 'Fix drag-to-reorder on mobile — freeze scroll during drag, re-capture pointer, preventDefault' },
@@ -1592,6 +1593,9 @@ function startDrag(rowEl, item, e) {
     r.style.transition = 'transform 250ms cubic-bezier(0.23,1,0.32,1)';
   });
 
+  // The dragged item's original index — insert here = no shift needed
+  const origIdx = rows.indexOf(rowEl);
+
   dragState = {
     itemId: item.id,
     item,
@@ -1603,7 +1607,8 @@ function startDrag(rowEl, item, e) {
     rows: otherRows,
     midpoints,
     container,
-    lastInsertIdx: -1,
+    origIdx,
+    lastInsertIdx: origIdx,
   };
 }
 
@@ -1625,10 +1630,15 @@ function updateDrag(e) {
   // Only update transforms when insertIdx changes
   if (insertIdx !== dragState.lastInsertIdx) {
     dragState.lastInsertIdx = insertIdx;
+    const orig = dragState.origIdx;
     for (let i = 0; i < dragState.rows.length; i++) {
-      dragState.rows[i].style.transform = i >= insertIdx
-        ? `translateY(${dragState.rowHeight}px)`
-        : '';
+      let shift = '';
+      if (insertIdx < orig && i >= insertIdx && i < orig) {
+        shift = `translateY(${dragState.rowHeight}px)`;  // shift down — making room above
+      } else if (insertIdx > orig && i >= orig && i < insertIdx) {
+        shift = `translateY(-${dragState.rowHeight}px)`; // shift up — filling the gap
+      }
+      dragState.rows[i].style.transform = shift;
     }
   }
 
