@@ -593,7 +593,7 @@
   <div class="list-container" id="listContainer"></div>
 
   <!-- Version -->
-  <div class="version-label">v1.2.6</div>
+  <div class="version-label">v1.3.0</div>
 
   <!-- FAB -->
   <button class="fab" id="fabBtn" title="Add new">
@@ -689,7 +689,7 @@
 // ═══════════════════════════════════════════════
 //  Configuration
 // ═══════════════════════════════════════════════
-const APP_VERSION = '1.2.6';
+const APP_VERSION = '1.3.0';
 const CLIENT_ID = '842400759802-7dla0o0vkr0p2250spaqpi8jrdf8p4ts.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'todo-data.json';
@@ -698,6 +698,7 @@ const DRIVE_FILE_NAME = 'todo-data.json';
 //  Icons (reusable SVG strings)
 // ═══════════════════════════════════════════════
 const CHANGELOG = [
+  { version: '1.3.0', date: '2026-03-22', msg: 'Fix mobile drag — show context menu without backdrop during press to avoid pointercancel' },
   { version: '1.2.6', date: '2026-03-22', msg: 'Fix drag-to-reorder on mobile — freeze scroll during drag, re-capture pointer, preventDefault' },
   { version: '1.2.5', date: '2026-03-22', msg: 'Fix drag-to-reorder on mobile — remove pointer-events:none from dragging state' },
   { version: '1.2.4', date: '2026-03-22', msg: 'Auto-update test' },
@@ -1338,7 +1339,25 @@ function attachRowListeners(container) {
         longPressTriggered = true;
         contextMenuShownDuringPress = true;
         if (navigator.vibrate) navigator.vibrate(30);
-        openContextMenu(item);
+        // Show context menu WITHOUT backdrop — backdrop would cause pointercancel on mobile
+        contextItem = item;
+        document.getElementById('ctxName').textContent = item.name;
+        document.getElementById('ctxDesc').textContent = item.description || 'No description';
+        document.getElementById('ctxDesc').style.fontStyle = item.description ? 'normal' : 'italic';
+        let actions = [
+          { icon: ICONS.edit, label: 'Edit', action: 'edit' },
+          { icon: ICONS.archive, label: 'Archive', action: 'archive' },
+        ];
+        if (navStack.length > 0) actions.push({ icon: ICONS.moveUp, label: 'Move up a level', action: 'moveUp' });
+        actions.push({ icon: ICONS.trash, label: 'Delete', action: 'delete', danger: true });
+        const actionsEl = document.getElementById('ctxActions');
+        actionsEl.innerHTML = actions.map(a =>
+          `<button class="ctx-action ${a.danger ? 'danger' : ''}" data-action="${a.action}">${a.icon} ${a.label}</button>`
+        ).join('');
+        actionsEl.querySelectorAll('.ctx-action').forEach(btn => {
+          btn.addEventListener('click', () => handleContextAction(btn.dataset.action));
+        });
+        document.getElementById('contextMenu').classList.add('active');
       }, 400);
 
       row.addEventListener('pointermove', onPointerMove);
@@ -1360,13 +1379,13 @@ function attachRowListeners(container) {
 
       // If context menu was shown during this press and user starts moving, dismiss and start drag
       if (contextMenuShownDuringPress && hasMoved && !dragState) {
-        forceCloseOverlay();
+        // Close context menu directly (no backdrop was shown, so no forceCloseOverlay needed)
+        document.getElementById('contextMenu').classList.remove('active');
+        contextItem = null;
         contextMenuShownDuringPress = false;
         const id = row.dataset.id;
         const item = findItemById(id);
         startDrag(row, item, e);
-        // Re-capture pointer — overlay may have disrupted capture on mobile
-        try { row.setPointerCapture(e.pointerId); } catch (ex) {}
       }
 
       if (dragState) {
@@ -1386,8 +1405,10 @@ function attachRowListeners(container) {
         return;
       }
 
-      // If context menu was shown and user released without moving, leave it open
+      // If context menu was shown and user released without moving, add backdrop and leave it open
       if (contextMenuShownDuringPress && !hasMoved) {
+        document.getElementById('backdrop').classList.add('active');
+        activeOverlay = 'contextMenu';
         pressStartPos = null;
         return;
       }
@@ -1413,6 +1434,10 @@ function attachRowListeners(container) {
       row.removeEventListener('pointerup', onPointerUp);
       row.removeEventListener('pointercancel', onPointerCancel);
       if (dragState) endDrag();
+      if (contextMenuShownDuringPress) {
+        document.getElementById('contextMenu').classList.remove('active');
+        contextItem = null;
+      }
       pressStartPos = null;
     };
 
