@@ -583,7 +583,7 @@
   <div class="list-container" id="listContainer"></div>
 
   <!-- Version -->
-  <div class="version-label">v1.0.0</div>
+  <div class="version-label">v1.1.0</div>
 
   <!-- FAB -->
   <button class="fab" id="fabBtn" title="Add new">
@@ -1046,11 +1046,7 @@ function isAllDone(item) {
 }
 
 function sortItems(items) {
-  const todo = items.filter(i => i.type === 'item' ? i.status !== 'done' : !isAllDone(i));
-  const done = items.filter(i => i.type === 'item' ? i.status === 'done' : isAllDone(i));
-  todo.sort((a, b) => a.order - b.order);
-  done.sort((a, b) => a.order - b.order);
-  return [...todo, ...done];
+  return [...items].sort((a, b) => a.order - b.order);
 }
 
 function searchAll(query, items = data.items, path = []) {
@@ -1394,19 +1390,7 @@ async function toggleDone(item) {
   await mutate(() => {
     const it = findItemById(itemId);
     if (!it || it.type !== 'item') return;
-
-    const pr = findParentOf(itemId);
-    const list = pr ? pr.list : data.items;
-
-    if (it.status === 'done') {
-      it.status = 'todo';
-      const todoItems = list.filter(i =>
-        i.id !== itemId && (i.type === 'item' ? i.status !== 'done' : !isAllDone(i))
-      );
-      it.order = todoItems.length ? Math.min(...todoItems.map(i => i.order)) - 1 : 0;
-    } else {
-      it.status = 'done';
-    }
+    it.status = it.status === 'done' ? 'todo' : 'done';
   });
 }
 
