@@ -470,6 +470,17 @@
   .submit-btn:active { transform:scale(0.98); }
   .submit-btn:disabled { opacity:0.4;cursor:not-allowed; }
 
+  /* ── Changelog ── */
+  .changelog-entries { padding:12px 20px 16px;max-height:60vh;overflow-y:auto; }
+  .changelog-entry { padding:8px 0;border-bottom:1px solid var(--border-subtle); }
+  .changelog-entry:last-child { border-bottom:none; }
+  .changelog-version {
+    font-size:12px;font-weight:600;color:var(--accent);
+    font-family:var(--font-mono);
+  }
+  .changelog-msg { font-size:14px;color:var(--text-primary);margin-top:2px; }
+  .changelog-date { font-size:11px;color:var(--text-muted);font-family:var(--font-mono); }
+
   /* ── Confirm Dialog ── */
   .confirm-dialog {
     position:fixed;
@@ -583,7 +594,7 @@
   <div class="list-container" id="listContainer"></div>
 
   <!-- Version -->
-  <div class="version-label">v1.1.0</div>
+  <div class="version-label">v1.2.0</div>
 
   <!-- FAB -->
   <button class="fab" id="fabBtn" title="Add new">
@@ -658,8 +669,20 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       Import JSON
     </button>
+    <button class="ctx-action" id="settingChangelog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      Changelog
+    </button>
   </div>
 </div>
+<!-- Changelog -->
+<div class="context-menu" id="changelogPanel">
+  <div class="ctx-header">
+    <div class="ctx-name">Changelog</div>
+  </div>
+  <div class="changelog-entries" id="changelogEntries"></div>
+</div>
+
 <input type="file" id="importFileInput" accept=".json" style="display:none">
 
 <script src="https://accounts.google.com/gsi/client" async></script>
@@ -674,6 +697,12 @@ const DRIVE_FILE_NAME = 'todo-data.json';
 // ═══════════════════════════════════════════════
 //  Icons (reusable SVG strings)
 // ═══════════════════════════════════════════════
+const CHANGELOG = [
+  { version: '1.2.0', date: '2026-03-22', msg: 'Add changelog to settings panel' },
+  { version: '1.1.0', date: '2026-03-22', msg: 'Remove todo/done sorting — items stay in user-defined order' },
+  { version: '1.0.0', date: '2026-03-22', msg: 'Initial release — Todo PWA with Google Drive sync' },
+];
+
 const ICONS = {
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
   folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>',
@@ -1841,6 +1870,18 @@ document.getElementById('settingExport').addEventListener('click', () => {
 
 document.getElementById('settingImport').addEventListener('click', () => {
   document.getElementById('importFileInput').click();
+});
+
+document.getElementById('settingChangelog').addEventListener('click', () => {
+  forceCloseOverlay();
+  document.getElementById('changelogEntries').innerHTML = CHANGELOG.map(e =>
+    `<div class="changelog-entry">
+      <div class="changelog-version">${e.version}</div>
+      <div class="changelog-msg">${esc(e.msg)}</div>
+      <div class="changelog-date">${e.date}</div>
+    </div>`
+  ).join('');
+  setTimeout(() => showOverlay('changelogPanel'), 200);
 });
 
 document.getElementById('importFileInput').addEventListener('change', async (e) => {
