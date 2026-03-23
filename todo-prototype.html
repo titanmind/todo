@@ -690,6 +690,7 @@
 // ═══════════════════════════════════════════════
 const APP_VERSION = '1.4.0';
 const CLIENT_ID = '842400759802-7dla0o0vkr0p2250spaqpi8jrdf8p4ts.apps.googleusercontent.com';
+const CLIENT_SECRET = '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';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'todo-data.json';
 const REDIRECT_URI = window.location.origin + window.location.pathname;
@@ -840,6 +841,7 @@ async function exchangeCode(code) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
       code,
       code_verifier: verifier,
       grant_type: 'authorization_code',
@@ -870,6 +872,7 @@ async function silentRefresh() {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
       grant_type: 'refresh_token',
       refresh_token: refreshTokenStr,
     }),
